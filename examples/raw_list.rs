@@ -6,7 +6,7 @@ extern crate async_tar;
 
 use async_std::{io::stdin, prelude::*};
 
-use async_tar::Archive;
+use async_tar::async_std::Archive;
 
 fn main() {
     async_std::task::block_on(async {

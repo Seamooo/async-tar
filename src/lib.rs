@@ -23,22 +23,14 @@
 use std::io::{Error, ErrorKind};
 
 pub use crate::{
-    archive::{Archive, ArchiveBuilder, Entries},
-    builder::Builder,
-    entry::{Entry, Unpacked},
     entry_type::EntryType,
-    header::{
-        GnuExtSparseHeader, GnuHeader, GnuSparseHeader, Header, HeaderMode, OldHeader, UstarHeader,
-    },
     pax::{PaxExtension, PaxExtensions},
 };
 
-mod archive;
-mod builder;
-mod entry;
+#[cfg(feature = "async-std")]
+pub mod async_std;
 mod entry_type;
 mod error;
-mod header;
 mod pax;
 
 #[cfg(test)]

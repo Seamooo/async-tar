@@ -12,7 +12,10 @@ use async_std::{
 };
 use std::iter::repeat;
 
-use async_tar::{Archive, ArchiveBuilder, Builder, EntryType, Header};
+use async_tar::{
+    async_std::{Archive, ArchiveBuilder, Builder, Header},
+    EntryType,
+};
 use filetime::FileTime;
 use tempfile::{Builder as TempBuilder, TempDir};
 

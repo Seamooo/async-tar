@@ -10,7 +10,7 @@ use std::{
 
 use tempfile::Builder;
 
-use async_tar::{GnuHeader, Header, HeaderMode};
+use async_tar::async_std::{GnuHeader, Header, HeaderMode};
 
 #[test]
 fn default_gnu() {

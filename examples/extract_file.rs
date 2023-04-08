@@ -13,7 +13,7 @@ use async_std::{
 };
 use std::env::args_os;
 
-use async_tar::Archive;
+use async_tar::async_std::Archive;
 
 fn main() {
     async_std::task::block_on(async {

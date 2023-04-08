@@ -14,11 +14,11 @@ use async_std::{
 };
 use pin_project::pin_project;
 
-use crate::{
+use super::{
     entry::{EntryFields, EntryIo},
-    error::TarError,
-    other, Entry, GnuExtSparseHeader, GnuSparseHeader, Header,
+    Entry, GnuExtSparseHeader, GnuSparseHeader, Header,
 };
+use crate::{error::TarError, other};
 
 /// A top-level representation of an archive file.
 ///
@@ -215,7 +215,7 @@ impl<R: Read + Unpin> Archive<R> {
     /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
     /// #
     /// use async_std::fs::File;
-    /// use async_tar::Archive;
+    /// use async_tar::async_std::Archive;
     ///
     /// let mut ar = Archive::new(File::open("foo.tar").await?);
     /// ar.unpack("foo").await?;

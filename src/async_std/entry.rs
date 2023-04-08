@@ -15,9 +15,8 @@ use pin_project::pin_project;
 
 use filetime::{self, FileTime};
 
-use crate::{
-    error::TarError, header::bytes2path, other, pax::pax_extensions, Archive, Header, PaxExtensions,
-};
+use super::{header::bytes2path, Archive, Header};
+use crate::{error::TarError, other, pax::pax_extensions, PaxExtensions};
 
 /// A read-only view into an entry of an archive.
 ///
@@ -230,7 +229,7 @@ impl<R: Read + Unpin> Entry<R> {
     /// #
     /// use async_std::fs::File;
     /// use async_std::prelude::*;
-    /// use async_tar::Archive;
+    /// use async_tar::async_std::Archive;
     ///
     /// let mut ar = Archive::new(File::open("foo.tar").await?);
     /// let mut entries = ar.entries()?;
@@ -264,7 +263,7 @@ impl<R: Read + Unpin> Entry<R> {
     /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
     /// #
     /// use async_std::fs::File;
-    /// use async_tar::Archive;
+    /// use async_tar::async_std::Archive;
     /// use async_std::prelude::*;
     ///
     /// let mut ar = Archive::new(File::open("foo.tar").await?);

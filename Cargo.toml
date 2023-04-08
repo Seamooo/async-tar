@@ -37,4 +37,5 @@ xattr = { version = "0.2", optional = true }
 redox_syscall = "0.2"
 
 [features]
-default = [ "xattr" ]
+default = [ "xattr", "async-std"]
+async-std = []
