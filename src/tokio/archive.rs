@@ -1,17 +1,14 @@
 use std::{
-    cmp,
+    cmp, io,
+    path::Path,
     pin::Pin,
     sync::{Arc, Mutex},
+    task::{ready, Context, Poll},
 };
+use tokio::fs;
+use tokio::io::{AsyncRead as Read, AsyncReadExt};
+use tokio_stream::{Stream, StreamExt};
 
-use async_std::{
-    fs, io,
-    io::prelude::*,
-    path::Path,
-    prelude::*,
-    stream::Stream,
-    task::{Context, Poll},
-};
 use pin_project::pin_project;
 
 use super::{
@@ -227,7 +224,7 @@ impl<R: Read + Unpin> Archive<R> {
         let mut pinned = Pin::new(&mut entries);
         let dst = dst.as_ref();
 
-        if dst.symlink_metadata().await.is_err() {
+        if tokio::fs::symlink_metadata(dst).await.is_err() {
             fs::create_dir_all(&dst)
                 .await
                 .map_err(|e| TarError::new(&format!("failed to create `{}`", dst.display()), e))?;
@@ -238,8 +235,7 @@ impl<R: Read + Unpin> Archive<R> {
         // extended-length path with a 32,767 character limit. Otherwise all
         // unpacked paths over 260 characters will fail on creation with a
         // NotFound exception.
-        let dst = &dst
-            .canonicalize()
+        let dst = tokio::fs::canonicalize(dst)
             .await
             .unwrap_or_else(|_| dst.to_path_buf());
 
@@ -252,11 +248,11 @@ impl<R: Read + Unpin> Archive<R> {
             if file.header().entry_type() == crate::EntryType::Directory {
                 directories.push(file);
             } else {
-                file.unpack_in(dst).await?;
+                file.unpack_in(&dst).await?;
             }
         }
         for mut dir in directories {
-            dir.unpack_in(dst).await?;
+            dir.unpack_in(&dst).await?;
         }
 
         Ok(())
@@ -277,7 +273,7 @@ pub struct Entries<R: Read + Unpin> {
 
 macro_rules! ready_opt_err {
     ($val:expr) => {
-        match async_std::task::ready!($val) {
+        match ready!($val) {
             Some(Ok(val)) => val,
             Some(Err(err)) => return Poll::Ready(Some(Err(err))),
             None => return Poll::Ready(None),
@@ -287,7 +283,7 @@ macro_rules! ready_opt_err {
 
 macro_rules! ready_err {
     ($val:expr) => {
-        match async_std::task::ready!($val) {
+        match ready!($val) {
             Ok(val) => val,
             Err(err) => return Poll::Ready(Some(Err(err))),
         }
@@ -403,7 +399,7 @@ fn poll_next_raw<R: Read + Unpin>(
         // Seek to the start of the next header in the archive
         if current_header.is_none() {
             let delta = *next - archive.inner.lock().unwrap().pos;
-            match async_std::task::ready!(poll_skip(archive.clone(), cx, delta)) {
+            match ready!(poll_skip(archive.clone(), cx, delta)) {
                 Ok(_) => {}
                 Err(err) => return Poll::Ready(Some(Err(err))),
             }
@@ -415,7 +411,7 @@ fn poll_next_raw<R: Read + Unpin>(
         let header = current_header.as_mut().unwrap();
 
         // EOF is an indicator that we are at the end of the archive.
-        match async_std::task::ready!(poll_try_read_all(
+        match ready!(poll_try_read_all(
             archive.clone(),
             cx,
             header.as_mut_bytes(),
@@ -554,7 +550,7 @@ fn poll_parse_sparse_header<R: Read + Unpin>(
                      blocks",
                 ));
             } else if cur < off {
-                let block = io::repeat(0).take(off - cur);
+                let block = tokio::io::repeat(0).take(off - cur);
                 data.push(EntryIo::Pad(block));
             }
             cur = off
@@ -583,7 +579,7 @@ fn poll_parse_sparse_header<R: Read + Unpin>(
 
             let ext = current_ext.as_mut().unwrap();
             while ext.is_extended() {
-                match async_std::task::ready!(poll_try_read_all(
+                match ready!(poll_try_read_all(
                     archive.clone(),
                     cx,
                     ext.as_mut_bytes(),
@@ -622,17 +618,18 @@ impl<R: Read + Unpin> Read for Archive<R> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        into: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
+        into: &mut tokio::io::ReadBuf,
+    ) -> Poll<io::Result<()>> {
         let mut lock = self.inner.lock().unwrap();
         let mut inner = Pin::new(&mut *lock);
         let r = Pin::new(&mut inner.obj);
 
-        let res = async_std::task::ready!(r.poll_read(cx, into));
-        match res {
-            Ok(i) => {
-                inner.pos += i as u64;
-                Poll::Ready(Ok(i))
+        let start = into.filled().len();
+        match ready!(r.poll_read(cx, into)) {
+            Ok(()) => {
+                let diff = into.filled().len() - start;
+                inner.pos += diff as u64;
+                Poll::Ready(Ok(()))
             }
             Err(err) => Poll::Ready(Err(err)),
         }
@@ -650,19 +647,24 @@ fn poll_try_read_all<R: Read + Unpin>(
     pos: &mut usize,
 ) -> Poll<io::Result<bool>> {
     while *pos < buf.len() {
-        match async_std::task::ready!(Pin::new(&mut source).poll_read(cx, &mut buf[*pos..])) {
-            Ok(0) => {
-                if *pos == 0 {
-                    return Poll::Ready(Ok(false));
-                }
+        let mut read_buf = tokio::io::ReadBuf::new(&mut buf[*pos..]);
+        let start = read_buf.filled().len();
+        match ready!(Pin::new(&mut source).poll_read(cx, &mut read_buf)) {
+            Ok(()) => {
+                let diff = read_buf.filled().len() - start;
+                if diff == 0 {
+                    if *pos == 0 {
+                        return Poll::Ready(Ok(false));
+                    }
 
-                return Poll::Ready(Err(other("failed to read entire block")));
+                    return Poll::Ready(Err(other("failed to read entire block")));
+                } else {
+                    *pos += diff;
+                }
             }
-            Ok(n) => *pos += n,
             Err(err) => return Poll::Ready(Err(err)),
         }
     }
-
     *pos = 0;
     Poll::Ready(Ok(true))
 }
@@ -676,12 +678,16 @@ fn poll_skip<R: Read + Unpin>(
     let mut buf = [0u8; 4096 * 8];
     while amt > 0 {
         let n = cmp::min(amt, buf.len() as u64);
-        match async_std::task::ready!(Pin::new(&mut source).poll_read(cx, &mut buf[..n as usize])) {
-            Ok(n) if n == 0 => {
-                return Poll::Ready(Err(other("unexpected EOF during skip")));
-            }
-            Ok(n) => {
-                amt -= n as u64;
+        let mut read_buf = tokio::io::ReadBuf::new(&mut buf[..n as usize]);
+        let start = read_buf.filled().len();
+        match ready!(Pin::new(&mut source).poll_read(cx, &mut read_buf)) {
+            Ok(()) => {
+                let diff = read_buf.filled().len() - start;
+                if diff == 0 {
+                    return Poll::Ready(Err(other("unexpected EOF during skip")));
+                } else {
+                    amt -= diff as u64;
+                }
             }
             Err(err) => return Poll::Ready(Err(err)),
         }

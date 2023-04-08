@@ -24,13 +24,20 @@ use std::io::{Error, ErrorKind};
 
 pub use crate::{
     entry_type::EntryType,
+    header::{
+        GnuExtSparseHeader, GnuHeader, GnuSparseHeader, Header, HeaderMode, OldHeader, UstarHeader,
+    },
     pax::{PaxExtension, PaxExtensions},
 };
 
 #[cfg(feature = "async-std")]
 pub mod async_std;
+#[cfg(feature = "tokio")]
+pub mod tokio;
+
 mod entry_type;
 mod error;
+mod header;
 mod pax;
 
 #[cfg(test)]

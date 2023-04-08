@@ -1,18 +1,13 @@
-use std::{
-    borrow::Cow,
-    path::{Path, PathBuf},
-};
-
-use async_std::{
-    fs,
-    io::{self, Read, Write},
-    prelude::*,
-};
+use std::{borrow::Cow, fs::Metadata, io, path::Path};
+use tokio::fs;
+use tokio::io::{AsyncRead as Read, AsyncReadExt, AsyncWrite as Write, AsyncWriteExt};
+use tokio_stream::StreamExt;
 
 use crate::{
     header::{bytes2path, path2bytes, HeaderMode},
-    other, EntryType, Header,
+    Header,
 };
+use crate::{other, EntryType};
 
 /// A structure for building archives
 ///
@@ -413,7 +408,7 @@ async fn append(
     mut data: &mut (dyn Read + Unpin + Send),
 ) -> io::Result<()> {
     dst.write_all(header.as_bytes()).await?;
-    let len = io::copy(&mut data, &mut dst).await?;
+    let len = tokio::io::copy(&mut data, &mut dst).await?;
 
     // Pad with zeros if necessary.
     let buf = [0; 512];
@@ -460,15 +455,15 @@ async fn append_path_with_name(
         .await?;
         Ok(())
     } else if stat.is_dir() {
-        append_fs(dst, ar_name, &stat, &mut io::empty(), mode, None).await?;
+        append_fs(dst, ar_name, &stat, &mut tokio::io::empty(), mode, None).await?;
         Ok(())
     } else if stat.file_type().is_symlink() {
-        let link_name: PathBuf = fs::read_link(path).await?.into();
+        let link_name = fs::read_link(path).await?;
         append_fs(
             dst,
             ar_name,
             &stat,
-            &mut io::empty(),
+            &mut tokio::io::empty(),
             mode,
             Some(&link_name),
         )
@@ -497,7 +492,7 @@ async fn append_dir(
     mode: HeaderMode,
 ) -> io::Result<()> {
     let stat = fs::metadata(src_path).await?;
-    append_fs(dst, path, &stat, &mut io::empty(), mode, None).await?;
+    append_fs(dst, path, &stat, &mut tokio::io::empty(), mode, None).await?;
     Ok(())
 }
 
@@ -535,7 +530,7 @@ async fn prepare_header_path(
         }
         let header2 = prepare_header(data.len() as u64, EntryType::GNULongName);
         // null-terminated string
-        let mut data2 = data.chain(io::repeat(0).take(1));
+        let mut data2 = data.chain(tokio::io::repeat(0).take(1));
         append(dst, &header2, &mut data2).await?;
         // Truncate the path to store in the header we're about to emit to
         // ensure we've got something at least mentioned.
@@ -557,7 +552,7 @@ async fn prepare_header_link(
             return Err(e);
         }
         let header2 = prepare_header(data.len() as u64, EntryType::GNULongLink);
-        let mut data2 = data.chain(io::repeat(0).take(1));
+        let mut data2 = data.chain(tokio::io::repeat(0).take(1));
         append(dst, &header2, &mut data2).await?;
     }
     Ok(())
@@ -566,7 +561,7 @@ async fn prepare_header_link(
 async fn append_fs(
     dst: &mut (dyn Write + Unpin + Send + Sync),
     path: &Path,
-    meta: &fs::Metadata,
+    meta: &Metadata,
     read: &mut (dyn Read + Unpin + Sync + Send),
     mode: HeaderMode,
     link_name: Option<&Path>,
@@ -597,23 +592,27 @@ async fn append_dir_all(
 
         // In case of a symlink pointing to a directory, is_dir is false, but src.is_dir() will return true
         if is_dir || (is_symlink && follow && src.is_dir()) {
-            let mut entries = fs::read_dir(&src).await?;
+            let mut entries = tokio_stream::wrappers::ReadDirStream::new(fs::read_dir(&src).await?);
             while let Some(entry) = entries.next().await {
                 let entry = entry?;
                 let file_type = entry.file_type().await?;
-                stack.push((
-                    entry.path().into(),
-                    file_type.is_dir(),
-                    file_type.is_symlink(),
-                ));
+                stack.push((entry.path(), file_type.is_dir(), file_type.is_symlink()));
             }
             if dest != Path::new("") {
                 append_dir(dst, &dest, &src, mode).await?;
             }
         } else if !follow && is_symlink {
             let stat = fs::symlink_metadata(&src).await?;
-            let link_name: PathBuf = fs::read_link(&src).await?.into();
-            append_fs(dst, &dest, &stat, &mut io::empty(), mode, Some(&link_name)).await?;
+            let link_name = fs::read_link(&src).await?;
+            append_fs(
+                dst,
+                &dest,
+                &stat,
+                &mut tokio::io::empty(),
+                mode,
+                Some(&link_name),
+            )
+            .await?;
         } else {
             append_file(dst, &dest, &mut fs::File::open(src).await?, mode).await?;
         }
@@ -621,18 +620,10 @@ async fn append_dir_all(
     Ok(())
 }
 
-impl<W: Write + Unpin + Send + Sync> Drop for Builder<W> {
-    fn drop(&mut self) {
-        async_std::task::block_on(async move {
-            let _ = self.finish().await;
-        });
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     assert_impl_all!(async_std::fs::File: Send, Sync);
-    assert_impl_all!(Builder<async_std::fs::File>: Send, Sync);
+    assert_impl_all!(Builder<fs::File>: Send, Sync);
 }

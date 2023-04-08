@@ -1,16 +1,17 @@
 use std::{
     borrow::Cow,
-    cmp, fmt, marker,
+    cmp, fmt,
+    fs::Permissions,
+    io::{self, Error, ErrorKind, SeekFrom},
+    marker,
     path::{Component, Path, PathBuf},
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 
-use async_std::{
-    fs,
-    fs::OpenOptions,
-    io::{self, prelude::*, Error, ErrorKind, SeekFrom},
-};
+use tokio::fs;
+use tokio::io::{AsyncRead as Read, AsyncReadExt, AsyncSeekExt};
+
 use pin_project::pin_project;
 
 use filetime::{self, FileTime};
@@ -81,8 +82,8 @@ impl<R: Read + Unpin> fmt::Debug for EntryFields<R> {
 
 #[pin_project(project = EntryIoProject)]
 pub enum EntryIo<R: Read + Unpin> {
-    Pad(#[pin] io::Take<io::Repeat>),
-    Data(#[pin] io::Take<R>),
+    Pad(#[pin] tokio::io::Take<tokio::io::Repeat>),
+    Data(#[pin] tokio::io::Take<R>),
 }
 
 impl<R: Read + Unpin> fmt::Debug for EntryIo<R> {
@@ -314,12 +315,11 @@ impl<R: Read + Unpin> Entry<R> {
 
 impl<R: Read + Unpin> Read for Entry<R> {
     fn poll_read(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        into: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
-        let mut this = self.project();
-        Pin::new(&mut *this.fields).poll_read(cx, into)
+        into: &mut tokio::io::ReadBuf,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.fields).poll_read(cx, into)
     }
 }
 
@@ -344,7 +344,7 @@ impl<R: Read + Unpin> EntryFields<R> {
         let mut buf = Vec::with_capacity(cap as usize);
 
         // Copied from futures::ReadToEnd
-        match async_std::task::ready!(poll_read_all_internal(self, cx, &mut buf)) {
+        match ready!(poll_read_all_internal(self, cx, &mut buf)) {
             Ok(_) => Poll::Ready(Ok(buf)),
             Err(err) => Poll::Ready(Err(err)),
         }
@@ -586,12 +586,12 @@ impl<R: Read + Unpin> EntryFields<R> {
 
             #[cfg(windows)]
             async fn symlink(src: &Path, dst: &Path) -> io::Result<()> {
-                async_std::os::windows::fs::symlink_file(src, dst).await
+                fs::symlink_file(src, dst).await
             }
 
             #[cfg(any(unix, target_os = "redox"))]
             async fn symlink(src: &Path, dst: &Path) -> io::Result<()> {
-                async_std::os::unix::fs::symlink(src, dst).await
+                fs::symlink(src, dst).await
             }
         } else if kind.is_pax_global_extensions()
             || kind.is_pax_local_extensions()
@@ -624,7 +624,7 @@ impl<R: Read + Unpin> EntryFields<R> {
         // Ensure we write a new file rather than overwriting in-place which
         // is attackable; if an existing file is found unlink it.
         async fn open(dst: &Path) -> io::Result<fs::File> {
-            OpenOptions::new()
+            fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .open(dst)
@@ -649,7 +649,7 @@ impl<R: Read + Unpin> EntryFields<R> {
                 match io {
                     EntryIo::Data(mut d) => {
                         let expected = d.limit();
-                        if io::copy(&mut d, &mut f).await? != expected {
+                        if tokio::io::copy(&mut d, &mut f).await? != expected {
                             return Err(other("failed to write entire file"));
                         }
                     }
@@ -721,7 +721,7 @@ impl<R: Read + Unpin> EntryFields<R> {
             use std::os::unix::prelude::*;
 
             let mode = if preserve { mode } else { mode & 0o777 };
-            let perm = fs::Permissions::from_mode(mode as _);
+            let perm = Permissions::from_mode(mode as _);
             match f {
                 Some(f) => f.set_permissions(perm).await,
                 None => fs::set_permissions(dst, perm).await,
@@ -821,7 +821,7 @@ impl<R: Read + Unpin> EntryFields<R> {
     async fn ensure_dir_created(&self, dst: &Path, dir: &Path) -> io::Result<()> {
         let mut ancestor = dir;
         let mut dirs_to_create = Vec::new();
-        while ancestor.symlink_metadata().is_err() {
+        while fs::symlink_metadata(ancestor).await.is_err() {
             dirs_to_create.push(ancestor);
             if let Some(parent) = ancestor.parent() {
                 ancestor = parent;
@@ -840,13 +840,13 @@ impl<R: Read + Unpin> EntryFields<R> {
 
     async fn validate_inside_dst(&self, dst: &Path, file_dst: &Path) -> io::Result<PathBuf> {
         // Abort if target (canonical) parent is outside of `dst`
-        let canon_parent = file_dst.canonicalize().map_err(|err| {
+        let canon_parent = fs::canonicalize(file_dst).await.map_err(|err| {
             Error::new(
                 err.kind(),
                 format!("{} while canonicalizing {}", err, file_dst.display()),
             )
         })?;
-        let canon_target = dst.canonicalize().map_err(|err| {
+        let canon_target = fs::canonicalize(dst).await.map_err(|err| {
             Error::new(
                 err.kind(),
                 format!("{} while canonicalizing {}", err, dst.display()),
@@ -869,33 +869,34 @@ impl<R: Read + Unpin> EntryFields<R> {
 
 impl<R: Read + Unpin> Read for EntryFields<R> {
     fn poll_read(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        into: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
-        let mut this = self.project();
+        into: &mut tokio::io::ReadBuf,
+    ) -> Poll<io::Result<()>> {
         loop {
-            if this.read_state.is_none() {
-                if this.data.as_ref().is_empty() {
-                    *this.read_state = None;
+            if self.read_state.is_none() {
+                if self.data.is_empty() {
+                    self.read_state = None;
                 } else {
-                    let data = &mut *this.data;
-                    *this.read_state = Some(data.remove(0));
+                    self.read_state = Some(self.data.remove(0));
                 }
             }
 
-            if let Some(ref mut io) = &mut *this.read_state {
+            if let Some(ref mut io) = &mut self.read_state {
+                let start = into.filled().len();
                 let ret = Pin::new(io).poll_read(cx, into);
                 match ret {
-                    Poll::Ready(Ok(0)) => {
-                        *this.read_state = None;
-                        if this.data.as_ref().is_empty() {
-                            return Poll::Ready(Ok(0));
+                    Poll::Ready(Ok(())) => {
+                        let diff = into.filled().len() - start;
+                        if diff == 0 {
+                            self.read_state = None;
+                            if self.data.is_empty() {
+                                return Poll::Ready(Ok(()));
+                            }
+                            continue;
+                        } else {
+                            return Poll::Ready(Ok(()));
                         }
-                        continue;
-                    }
-                    Poll::Ready(Ok(val)) => {
-                        return Poll::Ready(Ok(val));
                     }
                     Poll::Ready(Err(err)) => {
                         return Poll::Ready(Err(err));
@@ -906,20 +907,20 @@ impl<R: Read + Unpin> Read for EntryFields<R> {
                 }
             }
             // Unable to pull another value from `data`, so we are done.
-            return Poll::Ready(Ok(0));
+            return Poll::Ready(Ok(()));
         }
     }
 }
 
 impl<R: Read + Unpin> Read for EntryIo<R> {
     fn poll_read(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        into: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
-        match self.project() {
-            EntryIoProject::Pad(io) => io.poll_read(cx, into),
-            EntryIoProject::Data(io) => io.poll_read(cx, into),
+        into: &mut tokio::io::ReadBuf,
+    ) -> Poll<io::Result<()>> {
+        match &mut *self {
+            EntryIo::Pad(io) => Pin::new(io).poll_read(cx, into),
+            EntryIo::Data(io) => Pin::new(io).poll_read(cx, into),
         }
     }
 }
@@ -959,18 +960,23 @@ fn poll_read_all_internal<R: Read + ?Sized>(
             }
         }
 
-        match async_std::task::ready!(rd.as_mut().poll_read(cx, &mut g.buf[g.len..])) {
-            Ok(0) => {
-                ret = Poll::Ready(Ok(g.len));
-                break;
+        let mut read_buf = tokio::io::ReadBuf::new(&mut g.buf[g.len..]);
+        let start = read_buf.filled().len();
+        match ready!(rd.as_mut().poll_read(cx, &mut read_buf)) {
+            Ok(()) => {
+                let diff = read_buf.filled().len() - start;
+                if diff == 0 {
+                    ret = Poll::Ready(Ok(g.len));
+                    break;
+                } else {
+                    g.len += diff;
+                }
             }
-            Ok(n) => g.len += n,
             Err(e) => {
                 ret = Poll::Ready(Err(e));
                 break;
             }
         }
     }
-
     ret
 }
