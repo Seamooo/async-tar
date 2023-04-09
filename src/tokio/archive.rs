@@ -701,7 +701,7 @@ mod tests {
     use super::*;
 
     assert_impl_all!(async_std::fs::File: Send, Sync);
-    assert_impl_all!(Entries<async_std::fs::File>: Send, Sync);
-    assert_impl_all!(Archive<async_std::fs::File>: Send, Sync);
-    assert_impl_all!(Entry<Archive<async_std::fs::File>>: Send, Sync);
+    assert_impl_all!(Entries<tokio::fs::File>: Send, Sync);
+    assert_impl_all!(Archive<tokio::fs::File>: Send, Sync);
+    assert_impl_all!(Entry<Archive<tokio::fs::File>>: Send, Sync);
 }

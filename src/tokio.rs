@@ -1,4 +1,4 @@
-//! Module for use with I/O supported by [`async_std`]
+//! Module for use with I/O supported by [`tokio`]
 
 pub use self::{
     archive::{Archive, ArchiveBuilder, Entries},

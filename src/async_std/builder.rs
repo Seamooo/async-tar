@@ -103,7 +103,7 @@ impl<W: Write + Unpin + Send + Sync> Builder<W> {
     /// ```
     /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
     /// #
-    /// use async_tar::async_std::{Builder, Header};
+    /// use async_tar::{Header, async_std::Builder};
     ///
     /// let mut header = Header::new_gnu();
     /// header.set_path("foo")?;
@@ -158,7 +158,7 @@ impl<W: Write + Unpin + Send + Sync> Builder<W> {
     /// ```
     /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
     /// #
-    /// use async_tar::async_std::{Builder, Header};
+    /// use async_tar::{Header, async_std::Builder};
     ///
     /// let mut header = Header::new_gnu();
     /// header.set_size(4);

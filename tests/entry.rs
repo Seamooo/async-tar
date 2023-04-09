@@ -1,8 +1,8 @@
 extern crate async_tar;
 extern crate tempfile;
 
-use async_tar::async_std::{Archive, Builder, Header};
-use async_tar::EntryType;
+use async_tar::async_std::{Archive, Builder};
+use async_tar::{EntryType, Header};
 
 use async_std::{
     fs::{create_dir, File},

@@ -28,8 +28,10 @@ tokio-stream = { version = "0.1.12", optional = true, features = ["fs"] }
 
 [dev-dependencies]
 async-std = { version = "1.6.0", features = ["unstable", "attributes"] }
+tokio = { version = "1.27.0", features = ["fs", "io-util", "test-util"] }
 static_assertions = "1.1.0"
 tempfile = "3"
+async-tar = { path = ".", features = ["full"] }
 
 [target."cfg(unix)".dependencies]
 libc = "0.2"
@@ -39,6 +41,11 @@ xattr = { version = "0.2", optional = true }
 redox_syscall = "0.2"
 
 [features]
-default = [ "xattr", "async-std"]
+default = [ "xattr", "tokio"]
 async-std = ["dep:async-std"]
 tokio = ["dep:tokio", "dep:tokio-stream"]
+full = ["xattr", "tokio", "async-std"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

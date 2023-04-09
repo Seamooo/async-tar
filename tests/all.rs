@@ -7,14 +7,16 @@ extern crate xattr;
 use async_std::{
     fs::{self, File},
     io::{self, Cursor, Read, Write},
-    path::{Path, PathBuf},
     prelude::*,
 };
-use std::iter::repeat;
+use std::{
+    iter::repeat,
+    path::{Path, PathBuf},
+};
 
 use async_tar::{
-    async_std::{Archive, ArchiveBuilder, Builder, Header},
-    EntryType,
+    async_std::{Archive, ArchiveBuilder, Builder},
+    EntryType, Header,
 };
 use filetime::FileTime;
 use tempfile::{Builder as TempBuilder, TempDir};
@@ -718,10 +720,8 @@ async fn unpack_links() {
 
     let md = t!(fs::symlink_metadata(td.path().join("lnk")).await);
     assert!(md.file_type().is_symlink());
-    assert_eq!(
-        &*t!(fs::read_link(td.path().join("lnk")).await),
-        Path::new("file")
-    );
+    let result: PathBuf = t!(fs::read_link(td.path().join("lnk")).await).into();
+    assert_eq!(&result, Path::new("file"));
     t!(File::open(td.path().join("lnk")).await);
 }
 

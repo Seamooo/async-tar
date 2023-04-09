@@ -19,6 +19,7 @@
 
 #![deny(missing_docs)]
 #![deny(clippy::all)]
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
 use std::io::{Error, ErrorKind};
 

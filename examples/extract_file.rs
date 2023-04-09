@@ -8,10 +8,9 @@ extern crate async_tar;
 
 use async_std::{
     io::{copy, stdin, stdout},
-    path::Path,
     prelude::*,
 };
-use std::env::args_os;
+use std::{env::args_os, path::Path};
 
 use async_tar::async_std::Archive;
 
