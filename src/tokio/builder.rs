@@ -96,9 +96,10 @@ impl<W: Write + Unpin + Send + Sync> Builder<W> {
     /// # Examples
     ///
     /// ```
-    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
+    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
     /// #
-    /// use async_tar::{Header, async_std::Builder};
+    /// use async_tar::{Header, tokio::Builder};
     ///
     /// let mut header = Header::new_gnu();
     /// header.set_path("foo")?;
@@ -151,9 +152,10 @@ impl<W: Write + Unpin + Send + Sync> Builder<W> {
     /// # Examples
     ///
     /// ```
-    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
+    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
     /// #
-    /// use async_tar::{Header, async_std::Builder};
+    /// use async_tar::{Header, tokio::Builder};
     ///
     /// let mut header = Header::new_gnu();
     /// header.set_size(4);
@@ -198,9 +200,10 @@ impl<W: Write + Unpin + Send + Sync> Builder<W> {
     /// # Examples
     ///
     /// ```no_run
-    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
+    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
     /// #
-    /// use async_tar::async_std::Builder;
+    /// use async_tar::tokio::Builder;
     ///
     /// let mut ar = Builder::new(Vec::new());
     ///
@@ -232,9 +235,10 @@ impl<W: Write + Unpin + Send + Sync> Builder<W> {
     /// # Examples
     ///
     /// ```no_run
-    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
+    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
     /// #
-    /// use async_tar::async_std::Builder;
+    /// use async_tar::tokio::Builder;
     ///
     /// let mut ar = Builder::new(Vec::new());
     ///
@@ -278,10 +282,11 @@ impl<W: Write + Unpin + Send + Sync> Builder<W> {
     /// # Examples
     ///
     /// ```no_run
-    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
+    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
     /// #
-    /// use async_std::fs::File;
-    /// use async_tar::async_std::Builder;
+    /// use tokio::fs::File;
+    /// use async_tar::tokio::Builder;
     ///
     /// let mut ar = Builder::new(Vec::new());
     ///
@@ -318,10 +323,11 @@ impl<W: Write + Unpin + Send + Sync> Builder<W> {
     /// # Examples
     ///
     /// ```
-    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
+    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
     /// #
-    /// use async_std::fs;
-    /// use async_tar::async_std::Builder;
+    /// use tokio::fs;
+    /// use async_tar::tokio::Builder;
     ///
     /// let mut ar = Builder::new(Vec::new());
     ///
@@ -354,10 +360,11 @@ impl<W: Write + Unpin + Send + Sync> Builder<W> {
     /// # Examples
     ///
     /// ```
-    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
+    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
     /// #
-    /// use async_std::fs;
-    /// use async_tar::async_std::Builder;
+    /// use tokio::fs;
+    /// use async_tar::tokio::Builder;
     ///
     /// let mut ar = Builder::new(Vec::new());
     ///
@@ -624,6 +631,6 @@ async fn append_dir_all(
 mod tests {
     use super::*;
 
-    assert_impl_all!(async_std::fs::File: Send, Sync);
+    assert_impl_all!(tokio::fs::File: Send, Sync);
     assert_impl_all!(Builder<fs::File>: Send, Sync);
 }

@@ -228,11 +228,12 @@ impl<R: Read + Unpin> Entry<R> {
     /// # Examples
     ///
     /// ```no_run
-    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
+    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
     /// #
-    /// use async_std::fs::File;
-    /// use async_std::prelude::*;
-    /// use async_tar::async_std::Archive;
+    /// use tokio_stream::StreamExt;
+    /// use tokio::fs::File;
+    /// use async_tar::tokio::Archive;
     ///
     /// let mut ar = Archive::new(File::open("foo.tar").await?);
     /// let mut entries = ar.entries()?;
@@ -263,11 +264,12 @@ impl<R: Read + Unpin> Entry<R> {
     /// # Examples
     ///
     /// ```no_run
-    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> { async_std::task::block_on(async {
+    /// # fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
     /// #
-    /// use async_std::fs::File;
-    /// use async_tar::async_std::Archive;
-    /// use async_std::prelude::*;
+    /// use tokio::fs::File;
+    /// use tokio_stream::StreamExt;
+    /// use async_tar::tokio::Archive;
     ///
     /// let mut ar = Archive::new(File::open("foo.tar").await?);
     /// let mut entries = ar.entries()?;
