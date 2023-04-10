@@ -286,6 +286,13 @@ impl<R: Read + Unpin> Entry<R> {
         self.fields.unpack_in(dst.as_ref()).await
     }
 
+    /// Extracts the contents of this entry
+    ///
+    /// The entry should be checked to be a file otherwise an error will be returned
+    pub async fn unpack_contents(&mut self) -> io::Result<Vec<u8>> {
+        self.fields.unpack_contents().await
+    }
+
     /// Indicate whether extended file attributes (xattrs on Unix) are preserved
     /// when unpacking this entry.
     ///
@@ -818,6 +825,30 @@ impl<R: Read + Unpin> EntryFields<R> {
         async fn set_xattrs<R: Read + Unpin>(_: &mut EntryFields<R>, _: &Path) -> io::Result<()> {
             Ok(())
         }
+    }
+
+    // XXX(seamooo) below is basically a guess as to how it should be done
+    async fn unpack_contents(&mut self) -> io::Result<Vec<u8>> {
+        if !self.header.entry_type().is_file() {
+            return Err(io::Error::new(io::ErrorKind::Other, "not a file"));
+        }
+        let mut rv = Vec::new();
+        for io in self.data.drain(..) {
+            match io {
+                EntryIo::Data(mut d) => {
+                    let expected = d.limit() as usize;
+                    let mut contents = Vec::new();
+                    if d.read_to_end(&mut contents).await? != expected {
+                        return Err(other("failed to read entire file"));
+                    };
+                    rv.append(&mut contents);
+                }
+                EntryIo::Pad(d) => {
+                    rv.append(&mut vec![0; d.limit() as usize]);
+                }
+            }
+        }
+        Ok(rv)
     }
 
     async fn ensure_dir_created(&self, dst: &Path, dir: &Path) -> io::Result<()> {
